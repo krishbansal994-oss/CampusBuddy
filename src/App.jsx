@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, collection, getDocs, addDoc, setDoc, deleteDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, addDoc, setDoc, deleteDoc, serverTimestamp, query, where, onSnapshot } from "firebase/firestore";
 import Auth from "./auth";
 
 
@@ -544,10 +544,200 @@ async function sendSeatAlertRequest(spaceName) {
   return response.json();
 }
 
+
+/*
+ * CAMPUS MAP
+ *
+ * This is intentionally a lightweight, dependency-free campus map.
+ * It uses real campus service names from the demo data and keeps the
+ * location selection synchronized with the Space Finder list.
+ *
+ * The visual styling is primarily handled by App.css so this component
+ * remains usable in both day mode and Night-Owl mode.
+ */
+const campusMapPoints = [
+  {
+    id: "library",
+    name: "Central Library",
+    short: "Library",
+    icon: "📚",
+    x: 22,
+    y: 30,
+    spaceId: 1,
+    kind: "study",
+  },
+  {
+    id: "block34",
+    name: "Block 34",
+    short: "Classrooms",
+    icon: "🏫",
+    x: 55,
+    y: 24,
+    spaceId: 2,
+    kind: "academic",
+  },
+  {
+    id: "activity",
+    name: "Student Activity Center",
+    short: "Activities",
+    icon: "🤝",
+    x: 76,
+    y: 48,
+    spaceId: 3,
+    kind: "community",
+  },
+  {
+    id: "block32",
+    name: "Block 32 Study Hall",
+    short: "Study Hall",
+    icon: "📖",
+    x: 38,
+    y: 67,
+    spaceId: 4,
+    kind: "study",
+  },
+  {
+    id: "food",
+    name: "Food Court",
+    short: "Food",
+    icon: "🍔",
+    x: 68,
+    y: 75,
+    spaceId: null,
+    kind: "food",
+  },
+  {
+    id: "gate",
+    name: "Main Gate",
+    short: "Entry",
+    icon: "🚪",
+    x: 10,
+    y: 78,
+    spaceId: null,
+    kind: "entry",
+  },
+];
+
+function CampusMap({ spaces: mapSpaces, selectedSpace, onSelectSpace }) {
+  const safeSpaces = Array.isArray(mapSpaces) ? mapSpaces : [];
+
+  function handlePointClick(point) {
+    if (!point.spaceId) return;
+
+    const match = safeSpaces.find(
+      (space) => String(space.id) === String(point.spaceId)
+    );
+
+    if (match && typeof onSelectSpace === "function") {
+      onSelectSpace(match);
+    }
+  }
+
+  return (
+    <section className="campus-map-panel" aria-label="Campus map">
+      <div className="campus-map-heading">
+        <div>
+          <span className="eyebrow">CAMPUS MAP</span>
+          <h2>Find your way around</h2>
+          <p>
+            Select a mapped place to open its live space information.
+            This is a visual campus layout for the CampusBuddy prototype.
+          </p>
+        </div>
+
+        <div className="campus-map-legend" aria-label="Map legend">
+          <span>
+            <i className="map-legend-dot map-legend-dot-study" />
+            Study
+          </span>
+          <span>
+            <i className="map-legend-dot map-legend-dot-academic" />
+            Academic
+          </span>
+          <span>
+            <i className="map-legend-dot map-legend-dot-community" />
+            Community
+          </span>
+        </div>
+      </div>
+
+      <div className="campus-map-canvas">
+        <div className="campus-map-road campus-map-road-main" />
+        <div className="campus-map-road campus-map-road-cross" />
+        <div className="campus-map-green campus-map-green-one" />
+        <div className="campus-map-green campus-map-green-two" />
+        <div className="campus-map-water" />
+
+        {campusMapPoints.map((point) => {
+          const isSelected =
+            point.spaceId &&
+            selectedSpace &&
+            String(selectedSpace.id) === String(point.spaceId);
+
+          return (
+            <button
+              key={point.id}
+              type="button"
+              className={
+                isSelected
+                  ? "campus-map-marker selected"
+                  : "campus-map-marker"
+              }
+              style={{
+                left: `${point.x}%`,
+                top: `${point.y}%`,
+              }}
+              onClick={() => handlePointClick(point)}
+              disabled={!point.spaceId}
+              aria-label={`${point.name}${point.spaceId ? " — open details" : ""}`}
+              title={point.spaceId ? `Open ${point.name}` : point.name}
+            >
+              <span className="campus-map-marker-icon">{point.icon}</span>
+              <span className="campus-map-marker-label">{point.short}</span>
+            </button>
+          );
+        })}
+
+        <div className="campus-map-compass" aria-hidden="true">
+          <span>N</span>
+          <strong>↑</strong>
+        </div>
+
+        <div className="campus-map-scale" aria-hidden="true">
+          <span />
+          <small>Campus layout</small>
+        </div>
+      </div>
+
+      <div className="campus-map-footer">
+        <span>
+          📍 {campusMapPoints.filter((point) => point.spaceId).length} mapped
+          spaces
+        </span>
+        <span>•</span>
+        <span>⚡ Availability comes from CampusBuddy live state</span>
+      </div>
+    </section>
+  );
+}
+
+
 function App() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [studentProfile, setStudentProfile] = useState(null);
+
+  useEffect(() => {
+    if (typeof document !== "undefined" && !document.querySelector('link[rel="manifest"]')) {
+      const manifest = document.createElement("link");
+      manifest.rel = "manifest";
+      manifest.href = "/manifest.webmanifest";
+      document.head.appendChild(manifest);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -560,34 +750,28 @@ function App() {
     };
   }, []);
 
+  // Keep the signed-in user's Firebase profile live.
+  // This makes role/name changes appear immediately without refreshing.
   useEffect(() => {
     if (!user) {
       setStudentProfile(null);
       return;
     }
 
-    let cancelled = false;
-
-    const loadProfile = async () => {
-      try {
-        const snapshot = await getDoc(doc(db, "users", user.uid));
-
-        if (!cancelled) {
-          setStudentProfile(
-            snapshot.exists() ? snapshot.data() : null
-          );
-        }
-      } catch (error) {
-        console.error("Could not load student profile:", error);
-        if (!cancelled) setStudentProfile(null);
+    const unsubscribeProfile = onSnapshot(
+      doc(db, "users", user.uid),
+      (snapshot) => {
+        setStudentProfile(
+          snapshot.exists() ? snapshot.data() : null
+        );
+      },
+      (error) => {
+        console.error("Could not sync student profile:", error);
+        setStudentProfile(null);
       }
-    };
+    );
 
-    loadProfile();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => unsubscribeProfile();
   }, [user]);
 
   async function handleLogout() {
@@ -644,23 +828,83 @@ function App() {
   });
 
   const [adminData, setAdminData] = useState({ notices: [], events: [] });
+  const [firestoreSpaces, setFirestoreSpaces] = useState([]);
+  const [spacesLoaded, setSpacesLoaded] = useState(false);
+
+  const [firestoreFood, setFirestoreFood] = useState([]);
+  const [foodLoaded, setFoodLoaded] = useState(false);
+  const [foodLoading, setFoodLoading] = useState(false);
+  const [foodSaving, setFoodSaving] = useState(false);
+  const [editingFood, setEditingFood] = useState(null);
+  const [foodForm, setFoodForm] = useState({
+    name: "",
+    cuisine: "Multi-cuisine",
+    price: "₹50 - ₹200",
+    crowd: "Moderate",
+    rating: "4.0",
+    description: "",
+  });
+  const [spaceLoading, setSpaceLoading] = useState(false);
+  const [spaceSaving, setSpaceSaving] = useState(false);
+  const [editingSpace, setEditingSpace] = useState(null);
+  const [spaceForm, setSpaceForm] = useState({
+    name: "",
+    type: "Library",
+    location: "",
+    capacity: "50",
+    available: "18",
+    status: "Available",
+    environment: "Quiet",
+    description: "",
+  });
   const [adminHelpReports, setAdminHelpReports] = useState([]);
   const [adminHelpLoading, setAdminHelpLoading] = useState(false);
   const [adminHelpUpdating, setAdminHelpUpdating] = useState(null);
+
+  const [adminRegistrations, setAdminRegistrations] = useState([]);
+  const [adminRegistrationsLoading, setAdminRegistrationsLoading] = useState(false);
+  const [adminRegistrationEventFilter, setAdminRegistrationEventFilter] = useState("All");
+  const [adminRegistrationDeleting, setAdminRegistrationDeleting] = useState(null);
+
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSaving, setAdminSaving] = useState(false);
-  const [adminSection, setAdminSection] = useState("notices");
+  const [adminSection, setAdminSection] = useState("overview");
   const [editingAdminItem, setEditingAdminItem] = useState(null);
   const [adminForm, setAdminForm] = useState({ title: "", text: "", type: "ACADEMIC", date: "", month: "", time: "", location: "", category: "TECHNOLOGY", detail: "" });
 
   const [communityProfiles, setCommunityProfiles] = useState([]);
   const [communityLoading, setCommunityLoading] = useState(false);
   const [communitySaving, setCommunitySaving] = useState(false);
+  const [communitySearch, setCommunitySearch] = useState("");
   const [communityForm, setCommunityForm] = useState({
     skills: "",
     lookingFor: "",
     interests: "",
   });
+
+  // V2 profile + notification system. Profile fields are stored in the same
+  // protected users/{uid} document so role information stays server-controlled.
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    course: "",
+    year: "",
+    department: "",
+    phone: "",
+    bio: "",
+  });
+
+  useEffect(() => {
+    if (!studentProfile) return;
+    setProfileForm({
+      name: studentProfile.name || user?.displayName || user?.email?.split("@")[0] || "",
+      course: studentProfile.course || "",
+      year: String(studentProfile.year || ""),
+      department: studentProfile.department || "",
+      phone: studentProfile.phone || "",
+      bio: studentProfile.bio || "",
+    });
+  }, [studentProfile, user]);
 
   const [helpSubmitted, setHelpSubmitted] = useState(false);
   const [helpForm, setHelpForm] = useState({
@@ -735,21 +979,165 @@ function App() {
     };
   }, [user]);
 
+  // Real-time Firestore sync for Events + Notices.
+  // Any authenticated student sees admin-created changes without refreshing.
   useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    const loadAdminContent = async () => {
-      setAdminLoading(true);
-      try {
-        const [noticeSnapshot, eventSnapshot] = await Promise.all([getDocs(collection(db, "notices")), getDocs(collection(db, "events"))]);
-        const firestoreNotices = noticeSnapshot.docs.map((item) => ({ id: item.id, source: "firestore", ...item.data() }));
-        const firestoreEvents = eventSnapshot.docs.map((item) => ({ id: item.id, source: "firestore", ...item.data() }));
-        if (!cancelled) setAdminData({ notices: firestoreNotices, events: firestoreEvents });
-      } catch (error) { console.error("Could not load admin content:", error); }
-      finally { if (!cancelled) setAdminLoading(false); }
+    if (!user) {
+      setAdminData({ notices: [], events: [] });
+      setAdminLoading(false);
+      return;
+    }
+
+    setAdminLoading(true);
+
+    let noticesLoaded = false;
+    let eventsLoaded = false;
+
+    const finishInitialLoading = () => {
+      if (noticesLoaded && eventsLoaded) {
+        setAdminLoading(false);
+      }
     };
-    loadAdminContent();
-    return () => { cancelled = true; };
+
+    const unsubscribeNotices = onSnapshot(
+      collection(db, "notices"),
+      (snapshot) => {
+        const firestoreNotices = snapshot.docs.map((item) => ({
+          id: item.id,
+          source: "firestore",
+          ...item.data(),
+        }));
+
+        setAdminData((previous) => ({
+          ...previous,
+          notices: firestoreNotices,
+        }));
+
+        noticesLoaded = true;
+        finishInitialLoading();
+      },
+      (error) => {
+        console.error("Could not sync notices:", error);
+        noticesLoaded = true;
+        setAdminLoading(false);
+      }
+    );
+
+    const unsubscribeEvents = onSnapshot(
+      collection(db, "events"),
+      (snapshot) => {
+        const firestoreEvents = snapshot.docs.map((item) => ({
+          id: item.id,
+          source: "firestore",
+          ...item.data(),
+        }));
+
+        setAdminData((previous) => ({
+          ...previous,
+          events: firestoreEvents,
+        }));
+
+        eventsLoaded = true;
+        finishInitialLoading();
+      },
+      (error) => {
+        console.error("Could not sync events:", error);
+        eventsLoaded = true;
+        setAdminLoading(false);
+      }
+    );
+
+    return () => {
+      unsubscribeNotices();
+      unsubscribeEvents();
+    };
+  }, [user]);
+
+  // Real-time Firestore sync for Spaces.
+  // Students and admins see the same live campus-space data.
+  useEffect(() => {
+    if (!user) {
+      setFirestoreSpaces([]);
+      setSpacesLoaded(false);
+      setSpaceLoading(false);
+      return;
+    }
+
+    setSpaceLoading(true);
+
+    const unsubscribeSpaces = onSnapshot(
+      collection(db, "spaces"),
+      (snapshot) => {
+        const nextSpaces = snapshot.docs
+          .map((item) => ({
+            id: item.id,
+            source: "firestore",
+            ...item.data(),
+          }))
+          .map((space) => ({
+            ...space,
+            capacity: Number(space.capacity) || 0,
+            available: Number(space.available) || 0,
+            status: space.status || "Available",
+            environment: space.environment || "Quiet",
+          }));
+
+        setFirestoreSpaces(nextSpaces);
+        setSpacesLoaded(true);
+        setSpaceLoading(false);
+
+        setLiveAvailability((previous) => {
+          const nextAvailability = { ...previous };
+
+          nextSpaces.forEach((space) => {
+            nextAvailability[space.id] = space.available;
+          });
+
+          return nextAvailability;
+        });
+      },
+      (error) => {
+        console.error("Could not sync spaces:", error);
+        setSpacesLoaded(true);
+        setSpaceLoading(false);
+      }
+    );
+
+    return () => unsubscribeSpaces();
+  }, [user]);
+
+  // Real-time Firestore sync for Food & Canteens.
+  useEffect(() => {
+    if (!user) {
+      setFirestoreFood([]);
+      setFoodLoaded(false);
+      setFoodLoading(false);
+      return;
+    }
+
+    setFoodLoading(true);
+
+    const unsubscribeFood = onSnapshot(
+      collection(db, "food_places"),
+      (snapshot) => {
+        const nextFood = snapshot.docs.map((item) => ({
+          id: item.id,
+          source: "firestore",
+          ...item.data(),
+        }));
+
+        setFirestoreFood(nextFood);
+        setFoodLoaded(true);
+        setFoodLoading(false);
+      },
+      (error) => {
+        console.error("Could not sync food places:", error);
+        setFoodLoaded(true);
+        setFoodLoading(false);
+      }
+    );
+
+    return () => unsubscribeFood();
   }, [user]);
 
   // Load all student help reports for authorised admins.
@@ -779,18 +1167,58 @@ function App() {
     return () => { cancelled = true; };
   }, [user, studentProfile?.role]);
 
-  // Load student community profiles from Firestore.
+  // Real-time admin view of every event registration.
+  // Only admins start this listener; Firestore rules enforce the same access boundary.
   useEffect(() => {
-    if (!user) return;
+    if (!user || studentProfile?.role !== "admin") {
+      setAdminRegistrations([]);
+      setAdminRegistrationsLoading(false);
+      return;
+    }
 
-    let cancelled = false;
+    setAdminRegistrationsLoading(true);
 
-    const loadCommunityProfiles = async () => {
-      setCommunityLoading(true);
+    const unsubscribeRegistrations = onSnapshot(
+      collection(db, "event_registrations"),
+      (snapshot) => {
+        const registrations = snapshot.docs
+          .map((item) => ({
+            id: item.id,
+            ...item.data(),
+          }))
+          .sort((a, b) => {
+            const aTime = a.registeredAt?.seconds || 0;
+            const bTime = b.registeredAt?.seconds || 0;
+            return bTime - aTime;
+          });
 
-      try {
-        const snapshot = await getDocs(collection(db, "community"));
+        setAdminRegistrations(registrations);
+        setAdminRegistrationsLoading(false);
+      },
+      (error) => {
+        console.error("Could not sync admin event registrations:", error);
+        setAdminRegistrations([]);
+        setAdminRegistrationsLoading(false);
+      }
+    );
 
+    return () => unsubscribeRegistrations();
+  }, [user, studentProfile?.role]);
+
+  // Real-time student community directory from Firestore.
+  // Profile changes appear for other signed-in students without refreshing.
+  useEffect(() => {
+    if (!user) {
+      setCommunityProfiles([]);
+      setCommunityLoading(false);
+      return;
+    }
+
+    setCommunityLoading(true);
+
+    const unsubscribeCommunity = onSnapshot(
+      collection(db, "community"),
+      (snapshot) => {
         const profiles = snapshot.docs
           .map((item) => ({
             id: item.id,
@@ -803,69 +1231,62 @@ function App() {
             return aName.localeCompare(bName);
           });
 
-        if (!cancelled) {
-          setCommunityProfiles(profiles);
+        setCommunityProfiles(profiles);
 
-          const myProfile = profiles.find((profile) => profile.id === user.uid);
-          if (myProfile) {
-            setCommunityForm({
-              skills: myProfile.skills || "",
-              lookingFor: myProfile.lookingFor || "",
-              interests: myProfile.interests || "",
-            });
-          }
+        const myProfile = profiles.find((profile) => profile.id === user.uid);
+        if (myProfile) {
+          setCommunityForm({
+            skills: myProfile.skills || "",
+            lookingFor: myProfile.lookingFor || "",
+            interests: myProfile.interests || "",
+          });
         }
-      } catch (error) {
-        console.error("Could not load community profiles:", error);
-        if (!cancelled) setCommunityProfiles([]);
-      } finally {
-        if (!cancelled) setCommunityLoading(false);
+
+        setCommunityLoading(false);
+      },
+      (error) => {
+        console.error("Could not sync community profiles:", error);
+        setCommunityProfiles([]);
+        setCommunityLoading(false);
       }
-    };
+    );
 
-    loadCommunityProfiles();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => unsubscribeCommunity();
   }, [user]);
 
-  // Load this student's event registrations from Firestore.
+  // Real-time sync for this student's event registrations.
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setRegisteredEvents([]);
+      setEventRegistrationLoading(false);
+      return;
+    }
 
-    let cancelled = false;
+    setEventRegistrationLoading(true);
 
-    const loadEventRegistrations = async () => {
-      setEventRegistrationLoading(true);
+    const registrationsQuery = query(
+      collection(db, "event_registrations"),
+      where("userId", "==", user.uid)
+    );
 
-      try {
-        const registrationsQuery = query(
-          collection(db, "event_registrations"),
-          where("userId", "==", user.uid)
-        );
-
-        const snapshot = await getDocs(registrationsQuery);
+    const unsubscribeRegistrations = onSnapshot(
+      registrationsQuery,
+      (snapshot) => {
         const ids = snapshot.docs
           .map((item) => item.data()?.eventId)
           .filter(Boolean);
 
-        if (!cancelled) {
-          setRegisteredEvents(ids);
-        }
-      } catch (error) {
-        console.error("Could not load event registrations:", error);
-        if (!cancelled) setRegisteredEvents([]);
-      } finally {
-        if (!cancelled) setEventRegistrationLoading(false);
+        setRegisteredEvents(ids);
+        setEventRegistrationLoading(false);
+      },
+      (error) => {
+        console.error("Could not sync event registrations:", error);
+        setRegisteredEvents([]);
+        setEventRegistrationLoading(false);
       }
-    };
+    );
 
-    loadEventRegistrations();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => unsubscribeRegistrations();
   }, [user]);
 
   // Load this student's support and maintenance reports from Firestore.
@@ -912,53 +1333,11 @@ function App() {
     };
   }, [user]);
 
-  // Load all help reports for the admin dashboard.
-  useEffect(() => {
-    if (!user || studentProfile?.role !== "admin") {
-      setAdminHelpReports([]);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadAdminHelpReports = async () => {
-      setAdminHelpLoading(true);
-
-      try {
-        const snapshot = await getDocs(collection(db, "help_reports"));
-
-        const reports = snapshot.docs
-          .map((item) => ({
-            id: item.id,
-            ...item.data(),
-          }))
-          .sort((a, b) => {
-            const aTime = a.createdAt?.seconds || 0;
-            const bTime = b.createdAt?.seconds || 0;
-            return bTime - aTime;
-          });
-
-        if (!cancelled) setAdminHelpReports(reports);
-      } catch (error) {
-        console.error("Could not load admin help reports:", error);
-        if (!cancelled) setAdminHelpReports([]);
-      } finally {
-        if (!cancelled) setAdminHelpLoading(false);
-      }
-    };
-
-    loadAdminHelpReports();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user, studentProfile?.role]);
-
   // Authentication gate — all hooks above stay unconditional,
   // so React's Rules of Hooks are preserved.
   if (checkingAuth) {
     return (
-      <div className="app">
+      <div className="app campus-3d">
         <h2>Loading CampusBuddy...</h2>
       </div>
     );
@@ -968,18 +1347,279 @@ function App() {
     return <Auth onSuccess={setUser} />;
   }
 
+  const visibleSpaces = spacesLoaded ? firestoreSpaces : spaces;
+  const visibleFood = foodLoaded ? firestoreFood : foodPlaces;
+
   const filteredSpaces =
     spaceFilter === "All"
-      ? spaces
-      : spaces.filter((space) => space.status === spaceFilter);
+      ? visibleSpaces
+      : visibleSpaces.filter((space) => space.status === spaceFilter);
 
-  const visibleNotices = [...adminData.notices, ...notices];
-  const visibleEvents = [...adminData.events, ...events];
+  const visibleNotices = adminData.notices;
+  const visibleEvents = adminData.events;
 
   const filteredEvents =
     eventCategory === "All"
       ? visibleEvents
       : visibleEvents.filter((event) => event.category === eventCategory);
+
+  function resetSpaceForm() {
+    setEditingSpace(null);
+    setSpaceForm({
+      name: "",
+      type: "Library",
+      location: "",
+      capacity: "50",
+      available: "18",
+      status: "Available",
+      environment: "Quiet",
+      description: "",
+    });
+  }
+
+  function startSpaceEdit(space) {
+    if (space.source !== "firestore") return;
+
+    setEditingSpace(space);
+    setSpaceForm({
+      name: space.name || "",
+      type: space.type || "Library",
+      location: space.location || "",
+      capacity: String(space.capacity ?? ""),
+      available: String(space.available ?? ""),
+      status: space.status || "Available",
+      environment: space.environment || "Quiet",
+      description: space.description || "",
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveSpace(event) {
+    event.preventDefault();
+
+    if (
+      studentProfile?.role !== "admin" ||
+      !user ||
+      spaceSaving ||
+      !spaceForm.name.trim()
+    ) {
+      return;
+    }
+
+    const capacity = Math.max(0, Number(spaceForm.capacity) || 0);
+    const available = Math.min(
+      capacity,
+      Math.max(0, Number(spaceForm.available) || 0)
+    );
+
+    setSpaceSaving(true);
+
+    try {
+      const payload = {
+        name: spaceForm.name.trim(),
+        type: spaceForm.type,
+        location: spaceForm.location.trim(),
+        capacity,
+        available,
+        status: spaceForm.status,
+        environment: spaceForm.environment,
+        description: spaceForm.description.trim(),
+        updatedAt: serverTimestamp(),
+        createdBy: user.uid,
+      };
+
+      let spaceId = editingSpace?.id;
+
+      if (spaceId && editingSpace.source === "firestore") {
+        await setDoc(doc(db, "spaces", spaceId), payload, { merge: true });
+      } else {
+        const reference = await addDoc(collection(db, "spaces"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+        spaceId = reference.id;
+      }
+
+      const localSpace = {
+        id: spaceId,
+        source: "firestore",
+        ...payload,
+      };
+
+      setFirestoreSpaces((previous) =>
+        editingSpace
+          ? previous.map((space) =>
+              space.id === spaceId ? { ...space, ...localSpace } : space
+            )
+          : [localSpace, ...previous]
+      );
+      setSpacesLoaded(true);
+      setLiveAvailability((previous) => ({
+        ...previous,
+        [spaceId]: available,
+      }));
+
+      resetSpaceForm();
+      alert(
+        editingSpace
+          ? "Space updated successfully in Firebase."
+          : "Space published successfully to Firebase."
+      );
+    } catch (error) {
+      console.error("Space save failed:", error);
+      alert(
+        "Could not save this space. Check your Firestore rules and try again."
+      );
+    } finally {
+      setSpaceSaving(false);
+    }
+  }
+
+  async function deleteSpace(space) {
+    if (space.source !== "firestore" || studentProfile?.role !== "admin") {
+      return;
+    }
+
+    if (!window.confirm(`Delete "${space.name}"?`)) return;
+
+    try {
+      await deleteDoc(doc(db, "spaces", space.id));
+
+      setFirestoreSpaces((previous) =>
+        previous.filter((item) => item.id !== space.id)
+      );
+
+      setLiveAvailability((previous) => {
+        const next = { ...previous };
+        delete next[space.id];
+        return next;
+      });
+    } catch (error) {
+      console.error("Space delete failed:", error);
+      alert(
+        "Could not delete this space. Check your Firestore rules and try again."
+      );
+    }
+  }
+
+  function resetFoodForm() {
+    setEditingFood(null);
+    setFoodForm({
+      name: "",
+      cuisine: "Multi-cuisine",
+      price: "₹50 - ₹200",
+      crowd: "Moderate",
+      rating: "4.0",
+      description: "",
+    });
+  }
+
+  function startFoodEdit(place) {
+    if (place.source !== "firestore") return;
+
+    setEditingFood(place);
+    setFoodForm({
+      name: place.name || "",
+      cuisine: place.cuisine || "Multi-cuisine",
+      price: place.price || "",
+      crowd: place.crowd || "Moderate",
+      rating: String(place.rating ?? "4.0"),
+      description: place.description || "",
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveFoodPlace(event) {
+    event.preventDefault();
+
+    if (
+      studentProfile?.role !== "admin" ||
+      !user ||
+      foodSaving ||
+      !foodForm.name.trim()
+    ) {
+      return;
+    }
+
+    setFoodSaving(true);
+
+    try {
+      const payload = {
+        name: foodForm.name.trim(),
+        cuisine: foodForm.cuisine.trim() || "Multi-cuisine",
+        price: foodForm.price.trim() || "Price not added",
+        crowd: foodForm.crowd,
+        rating: foodForm.rating.trim() || "0.0",
+        description: foodForm.description.trim(),
+        updatedAt: serverTimestamp(),
+        createdBy: user.uid,
+      };
+
+      let foodId = editingFood?.id;
+
+      if (foodId && editingFood.source === "firestore") {
+        await setDoc(doc(db, "food_places", foodId), payload, { merge: true });
+      } else {
+        const reference = await addDoc(collection(db, "food_places"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+        foodId = reference.id;
+      }
+
+      const localFood = {
+        id: foodId,
+        source: "firestore",
+        ...payload,
+      };
+
+      setFirestoreFood((previous) =>
+        editingFood
+          ? previous.map((place) =>
+              place.id === foodId ? { ...place, ...localFood } : place
+            )
+          : [localFood, ...previous]
+      );
+
+      setFoodLoaded(true);
+      resetFoodForm();
+
+      alert(
+        editingFood
+          ? "Food place updated successfully in Firebase."
+          : "Food place published successfully to Firebase."
+      );
+    } catch (error) {
+      console.error("Food place save failed:", error);
+      alert(
+        "Could not save this food place. Check your Firestore rules and try again."
+      );
+    } finally {
+      setFoodSaving(false);
+    }
+  }
+
+  async function deleteFoodPlace(place) {
+    if (place.source !== "firestore" || studentProfile?.role !== "admin") {
+      return;
+    }
+
+    if (!window.confirm(`Delete "${place.name}"?`)) return;
+
+    try {
+      await deleteDoc(doc(db, "food_places", place.id));
+      setFirestoreFood((previous) =>
+        previous.filter((item) => item.id !== place.id)
+      );
+    } catch (error) {
+      console.error("Food place delete failed:", error);
+      alert(
+        "Could not delete this food place. Check your Firestore rules and try again."
+      );
+    }
+  }
 
   function resetAdminForm() {
     setEditingAdminItem(null);
@@ -1050,6 +1690,33 @@ function App() {
       alert("Could not update this report. Check your Firestore rules.");
     } finally {
       setAdminHelpUpdating(null);
+    }
+  }
+
+  async function saveStudentProfile(event) {
+    event.preventDefault();
+    if (!user || profileSaving) return;
+
+    setProfileSaving(true);
+    try {
+      const payload = {
+        name: profileForm.name.trim() || user.displayName || user.email?.split("@")[0] || "Campus student",
+        course: profileForm.course.trim(),
+        year: profileForm.year.trim(),
+        department: profileForm.department.trim(),
+        phone: profileForm.phone.trim(),
+        bio: profileForm.bio.trim(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, "users", user.uid), payload, { merge: true });
+      setStudentProfile((previous) => ({ ...(previous || {}), ...payload, role: previous?.role || "student" }));
+      alert("Your CampusBuddy profile was updated.");
+    } catch (error) {
+      console.error("Profile update failed:", error);
+      alert("Could not update your profile. Check your Firebase rules and try again.");
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -1124,7 +1791,41 @@ function App() {
     if (!aiQuery.trim()) return;
 
     const intent = getAIIntent(aiQuery);
-    setAiIntent(intent);
+    const text = aiQuery.toLowerCase();
+    let contextual = { ...intent };
+
+    if (intent.type === "spaces") {
+      const quiet = visibleSpaces.filter((space) =>
+        String(space.environment || "").toLowerCase().includes("quiet")
+      );
+      const match = quiet[0] || visibleSpaces[0];
+      if (match) {
+        const seats = liveAvailability[match.id] ?? match.available ?? 0;
+        contextual.message = `${match.name} is a live match: ${seats} seats available, ${match.environment || "campus"} environment, ${match.location || "campus"}.`;
+      }
+    } else if (intent.type === "events") {
+      const match = visibleEvents.find((event) =>
+        text.includes("coding")
+          ? /coding|tech|ai|hackathon/i.test(`${event.title} ${event.category}`)
+          : true
+      ) || visibleEvents[0];
+      if (match) contextual.message = `${match.title} is coming up on ${match.date || "the scheduled date"} at ${match.time || "the listed time"} in ${match.location || "the campus venue"}.`;
+    } else if (intent.type === "food") {
+      const match = visibleFood[0];
+      if (match) contextual.message = `${match.name} offers ${match.cuisine || "campus food"} at ${match.price || "campus pricing"}. Current crowd level: ${match.crowd || "not added"}.`;
+    } else if (intent.type === "notices") {
+      const match = visibleNotices[0];
+      if (match) contextual.message = `Latest campus notice: ${match.title}. ${match.text || "Open Notices for the full details."}`;
+    } else if (intent.type === "academic") {
+      contextual.message = `Your Academic Hub has timetable, assignment, attendance and exam information. ${studentProfile?.course ? `Your profile is set to ${studentProfile.course}.` : "Add your course in Profile for more personalization."}`;
+    } else if (intent.type === "community") {
+      const count = communityProfiles.length;
+      contextual.message = `${count} student profile${count === 1 ? "" : "s"} are currently visible in the Community directory. Search by skill, course or interest to find collaborators.`;
+    } else if (intent.type === "help") {
+      contextual.message = `You can submit a support request and track its status from Campus Help. You currently have ${helpReports.length} report${helpReports.length === 1 ? "" : "s"} in your account.`;
+    }
+
+    setAiIntent(contextual);
     goTo("ai");
   }
 
@@ -1188,6 +1889,8 @@ function App() {
     const alreadyRegistered = registeredEvents.includes(id);
     const safeEventId = String(id).replaceAll("/", "_");
     const registrationId = `${user.uid}_${safeEventId}`;
+    const eventRecord =
+      [...visibleEvents, ...events].find((item) => String(item.id) === String(id)) || null;
 
     setEventRegistrationSaving(id);
 
@@ -1196,7 +1899,7 @@ function App() {
         await deleteDoc(doc(db, "event_registrations", registrationId));
 
         setRegisteredEvents((previous) =>
-          previous.filter((eventId) => eventId !== id)
+          previous.filter((eventId) => String(eventId) !== String(id))
         );
       } else {
         await setDoc(doc(db, "event_registrations", registrationId), {
@@ -1208,10 +1911,17 @@ function App() {
             "Campus student",
           studentEmail: user.email || "",
           eventId: id,
+          eventTitle: eventRecord?.title || "",
+          eventDate: eventRecord?.date || "",
+          eventMonth: eventRecord?.month || "",
+          eventTime: eventRecord?.time || "",
+          eventLocation: eventRecord?.location || "",
           registeredAt: serverTimestamp(),
         });
 
-        setRegisteredEvents((previous) => [...previous, id]);
+        setRegisteredEvents((previous) =>
+          previous.includes(id) ? previous : [...previous, id]
+        );
       }
     } catch (error) {
       console.error("Event registration failed:", error);
@@ -1221,6 +1931,125 @@ function App() {
     } finally {
       setEventRegistrationSaving(null);
     }
+  }
+
+  async function deleteAdminRegistration(registration) {
+    if (
+      studentProfile?.role !== "admin" ||
+      !registration?.id ||
+      adminRegistrationDeleting === registration.id
+    ) {
+      return;
+    }
+
+    const studentName = registration.studentName || "this student";
+    const eventTitle =
+      registration.eventTitle ||
+      [...visibleEvents, ...events].find(
+        (item) => String(item.id) === String(registration.eventId)
+      )?.title ||
+      "this event";
+
+    if (
+      !window.confirm(
+        `Remove ${studentName}'s registration for "${eventTitle}"?`
+      )
+    ) {
+      return;
+    }
+
+    setAdminRegistrationDeleting(registration.id);
+
+    try {
+      await deleteDoc(doc(db, "event_registrations", registration.id));
+
+      setAdminRegistrations((previous) =>
+        previous.filter((item) => item.id !== registration.id)
+      );
+    } catch (error) {
+      console.error("Admin registration delete failed:", error);
+      alert(
+        "Could not remove this registration. Check your Firestore rules and try again."
+      );
+    } finally {
+      setAdminRegistrationDeleting(null);
+    }
+  }
+
+  function formatRegistrationDate(timestamp) {
+    if (!timestamp) return "Just now";
+
+    let date = null;
+
+    if (typeof timestamp.toDate === "function") {
+      date = timestamp.toDate();
+    } else if (timestamp.seconds) {
+      date = new Date(timestamp.seconds * 1000);
+    } else {
+      date = new Date(timestamp);
+    }
+
+    if (Number.isNaN(date.getTime())) return "Date unavailable";
+
+    return date.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function downloadRegistrationsCSV() {
+    if (adminRegistrations.length === 0) return;
+
+    const eventMap = new Map(
+      [...events, ...visibleEvents].map((item) => [String(item.id), item])
+    );
+
+    const escapeCSV = (value) =>
+      `"${String(value ?? "").replaceAll('"', '""')}"`;
+
+    const rows = [
+      [
+        "Student Name",
+        "Student Email",
+        "Event",
+        "Event Date",
+        "Event Time",
+        "Event Location",
+        "Registered At",
+      ],
+      ...adminRegistrations.map((registration) => {
+        const event = eventMap.get(String(registration.eventId));
+
+        return [
+          registration.studentName || "",
+          registration.studentEmail || "",
+          registration.eventTitle || event?.title || registration.eventId || "",
+          registration.eventDate ||
+            (event ? `${event.date || ""} ${event.month || ""}`.trim() : ""),
+          registration.eventTime || event?.time || "",
+          registration.eventLocation || event?.location || "",
+          formatRegistrationDate(registration.registeredAt),
+        ];
+      }),
+    ];
+
+    const csv = rows.map((row) => row.map(escapeCSV).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `campusbuddy-event-registrations-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
   function openLostFoundForm(type) {
@@ -1381,7 +2210,7 @@ function App() {
    */
   if (detail) {
     return (
-      <div className={nightMode ? "app night-owl" : "app"}>
+      <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
         <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
         <main className="space-finder">
@@ -1406,7 +2235,7 @@ function App() {
    */
   if (page === "lostfound") {
     return (
-      <div className={nightMode ? "app night-owl" : "app"}>
+      <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
         <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
         <main className="space-finder">
@@ -1499,7 +2328,7 @@ function App() {
    */
   if (page === "spaces") {
     return (
-      <div className={nightMode ? "app night-owl" : "app"}>
+      <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
         <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
         <main className="space-finder">
@@ -1511,6 +2340,12 @@ function App() {
             text="Discover available places to study, work, collaborate or relax."
             count={filteredSpaces.length}
             countText="spaces found"
+          />
+
+          <CampusMap
+            spaces={spaces}
+            selectedSpace={selectedSpace}
+            onSelectSpace={setSelectedSpace}
           />
 
           <div className="filter-bar">
@@ -1623,7 +2458,10 @@ function App() {
                     </p>
 
                     <div className="space-meta">
-                      <span>👥 {liveAvailability[space.id]} seats</span>
+                      <span>
+                        👥{" "}
+                        {liveAvailability[space.id] ?? space.available ?? 0} seats
+                      </span>
                       <span>•</span>
                       <span>🔇 {space.environment}</span>
                       <span>•</span>
@@ -1652,7 +2490,7 @@ function App() {
                   <div className="availability-box">
                     <div>
                       <span>Available seats</span>
-                      <strong>{liveAvailability[selectedSpace.id]}</strong>
+                      <strong>{liveAvailability[selectedSpace.id] ?? selectedSpace.available ?? 0}</strong>
                     </div>
 
                     <div>
@@ -1858,7 +2696,7 @@ function App() {
    */
   if (page === "events") {
     return (
-      <div className={nightMode ? "app night-owl" : "app"}>
+      <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
         <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
         <main className="space-finder">
@@ -1899,6 +2737,33 @@ function App() {
               Loading your Firebase registrations...
             </div>
           )}
+
+          <div
+            style={{
+              marginBottom: "18px",
+              padding: "16px 18px",
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "16px",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "12px",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <span className="eyebrow">MY EVENT ACTIVITY</span>
+              <strong style={{ display: "block", marginTop: "4px" }}>
+                {registeredEvents.length} event{registeredEvents.length === 1 ? "" : "s"} registered
+              </strong>
+            </div>
+            {registeredEvents.length > 0 && (
+              <span style={{ fontSize: "13px", color: "#5d718f", fontWeight: 700 }}>
+                Your registration is saved to Firebase.
+              </span>
+            )}
+          </div>
 
           <div className="mini-event-list">
             {filteredEvents.map((event) => {
@@ -1980,48 +2845,65 @@ function App() {
         user={user}
         onLogout={handleLogout}
       >
-        <div className="module-grid">
-          {foodPlaces.map((place) => (
-            <DashboardModule
-              key={place.id}
-              icon="🍔"
-              title={place.name}
-              text={
-                <>
-                  {place.cuisine}
-                  <br />
-                  {place.price} • ⭐ {place.rating}
-                  <br />
-                  Crowd: {place.crowd}
-                </>
-              }
-              onClick={() => goTo("detail", place)}
-            />
-          ))}
-        </div>
+        {foodLoading && (
+          <p style={{ opacity: 0.7, marginBottom: "16px" }}>
+            Loading food places from Firebase...
+          </p>
+        )}
 
-        <section className="section">
-          <div className="notice-banner">
-            <div className="notice-icon">🍽️</div>
-
-            <div>
-              <span className="eyebrow">CAMPUS FOOD</span>
-              <h3>Popular right now</h3>
-              <p>
-                Campus Cafe is currently busy. South Indian Corner has lower
-                crowd levels.
-              </p>
+        {visibleFood.length === 0 ? (
+          <section className="section dashboard-section">
+            <div className="notice-banner">
+              <div className="notice-icon">🍽️</div>
+              <div>
+                <span className="eyebrow">FOOD & CANTEENS</span>
+                <h3>No food places published yet.</h3>
+                <p>
+                  Campus administrators can publish food places from the Admin dashboard.
+                </p>
+              </div>
             </div>
-
-            <button
-              onClick={() =>
-                goTo("detail", foodPlaces[2])
-              }
-            >
-              View recommendation →
-            </button>
+          </section>
+        ) : (
+          <div className="module-grid">
+            {visibleFood.map((place) => (
+              <DashboardModule
+                key={place.id}
+                icon="🍔"
+                title={place.name}
+                text={
+                  <>
+                    {place.cuisine}
+                    <br />
+                    {place.price} • ⭐ {place.rating}
+                    <br />
+                    Crowd: {place.crowd}
+                  </>
+                }
+                onClick={() => goTo("detail", place)}
+              />
+            ))}
           </div>
-        </section>
+        )}
+
+        {visibleFood.length > 0 && (
+          <section className="section">
+            <div className="notice-banner">
+              <div className="notice-icon">🍽️</div>
+              <div>
+                <span className="eyebrow">CAMPUS FOOD</span>
+                <h3>Food places from CampusBuddy</h3>
+                <p>
+                  {visibleFood[0].name} is currently listed with a rating of{" "}
+                  {visibleFood[0].rating} and {String(visibleFood[0].crowd).toLowerCase()} crowd.
+                </p>
+              </div>
+              <button onClick={() => goTo("detail", visibleFood[0])}>
+                View place →
+              </button>
+            </div>
+          </section>
+        )}
       </SimplePage>
     );
   }
@@ -2103,6 +2985,107 @@ function App() {
    * CAMPUS HELP
    */
   if (page === "help") {
+    const isAdminUser = studentProfile?.role === "admin";
+
+    if (isAdminUser) {
+      return (
+        <SimplePage
+          setPage={goTo}
+          eyebrow="ADMIN SUPPORT CENTER"
+          title="Manage campus help."
+          text="Review student maintenance requests and update their status from one place."
+          nightMode={nightMode}
+          setNightMode={setNightMode}
+          geoVerified={geoVerified}
+          profile={studentProfile}
+          user={user}
+          onLogout={handleLogout}
+        >
+          <div
+            style={{
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: "22px",
+              padding: "24px",
+              marginBottom: "24px",
+            }}
+          >
+            <span className="eyebrow">ADMIN MODE</span>
+            <h2 style={{ marginBottom: "7px" }}>You are signed in as an administrator.</h2>
+            <p style={{ marginBottom: "16px" }}>
+              Student help requests belong in the Admin Dashboard. You can review
+              reports, see who submitted them, and change each request from Open
+              to In Progress or Resolved.
+            </p>
+            <button className="primary-button" onClick={() => goTo("admin")}>
+              Open Admin Help Reports →
+            </button>
+          </div>
+
+          <section className="section dashboard-section">
+            <div style={{ marginBottom: "14px" }}>
+              <span className="eyebrow">SUPPORT SNAPSHOT</span>
+              <h2 style={{ marginBottom: "5px" }}>Current requests</h2>
+              <p>Quick status counts from the reports available to this admin account.</p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: "12px",
+              }}
+            >
+              {[
+                ["Total", adminHelpReports.length, "📋"],
+                ["Open", adminHelpReports.filter((report) => (report.status || "Open") === "Open").length, "🟠"],
+                ["In Progress", adminHelpReports.filter((report) => report.status === "In Progress").length, "🔵"],
+                ["Resolved", adminHelpReports.filter((report) => report.status === "Resolved").length, "🟢"],
+              ].map(([label, value, icon]) => (
+                <div
+                  key={label}
+                  style={{
+                    background: "#f8fafc",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "16px",
+                    padding: "18px",
+                  }}
+                >
+                  <div style={{ fontSize: "20px" }}>{icon}</div>
+                  <strong style={{ display: "block", fontSize: "28px", marginTop: "7px" }}>
+                    {value}
+                  </strong>
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#60708a" }}>
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="section dashboard-section" style={{ marginTop: "24px" }}>
+            <div style={{ marginBottom: "14px" }}>
+              <span className="eyebrow">EMERGENCY CONTACTS</span>
+              <h2 style={{ marginBottom: "5px" }}>Campus support information</h2>
+              <p>These are the same important support contacts shown to students.</p>
+            </div>
+
+            <div className="module-grid">
+              {helpItems.map((item) => (
+                <InfoCard
+                  key={item.id}
+                  icon={item.icon}
+                  title={item.title}
+                  text={item.text}
+                  onClick={() => goTo("detail", item)}
+                />
+              ))}
+            </div>
+          </section>
+        </SimplePage>
+      );
+    }
+
     return (
       <SimplePage
         setPage={goTo}
@@ -2313,10 +3296,350 @@ function App() {
         ? adminData.notices
         : adminSection === "events"
         ? adminData.events
+        : adminSection === "spaces"
+        ? firestoreSpaces
+        : adminSection === "food"
+        ? firestoreFood
+        : adminSection === "registrations"
+        ? adminRegistrations
         : adminHelpReports;
-    return <SimplePage setPage={goTo} eyebrow="CAMPUS ADMIN" title="Control the campus feed." text="Publish and update notices and events from Firebase without changing the React code." nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout}>
-      <div className="admin-hero"><div><span className="eyebrow">LIVE CONTENT CONTROL</span><h2>One dashboard. Campus content + student support.</h2><p>Changes made here are stored in Firestore and reflected in the student experience.</p></div><div className="admin-status">● Firebase connected</div></div>
-      <div className="filter-bar admin-tabs"><button className={adminSection === "notices" ? "filter active" : "filter"} onClick={() => { setAdminSection("notices"); resetAdminForm(); }}>📢 Notices</button><button className={adminSection === "events" ? "filter active" : "filter"} onClick={() => { setAdminSection("events"); resetAdminForm(); }}>📅 Events</button><button className={adminSection === "help" ? "filter active" : "filter"} onClick={() => { setAdminSection("help"); resetAdminForm(); }}>🛠️ Help Reports</button></div>
+    return <SimplePage setPage={goTo} eyebrow="CAMPUS ADMIN" title="Control the campus experience." text="Manage campus content, spaces, food, student registrations and support reports from Firebase." nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout}>
+      <div className="admin-hero">
+        <div>
+          <span className="eyebrow">LIVE CONTENT CONTROL</span>
+          <h2>One dashboard. Campus content + student support.</h2>
+          <p>
+            Changes made here are stored in Firestore and reflected in the student experience.
+          </p>
+        </div>
+        <div className="admin-status">● Firebase connected</div>
+      </div>
+      <div className="filter-bar admin-tabs">
+        <button className={adminSection === "overview" ? "filter active" : "filter"} onClick={() => { setAdminSection("overview"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>📊 Overview</button>
+        <button className={adminSection === "notices" ? "filter active" : "filter"} onClick={() => { setAdminSection("notices"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>📢 Notices</button>
+        <button className={adminSection === "events" ? "filter active" : "filter"} onClick={() => { setAdminSection("events"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>📅 Events</button>
+        <button className={adminSection === "spaces" ? "filter active" : "filter"} onClick={() => { setAdminSection("spaces"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>🏫 Spaces</button>
+        <button className={adminSection === "food" ? "filter active" : "filter"} onClick={() => { setAdminSection("food"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>🍔 Food</button>
+        <button className={adminSection === "registrations" ? "filter active" : "filter"} onClick={() => { setAdminSection("registrations"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>🎟️ Registrations</button>
+        <button className={adminSection === "help" ? "filter active" : "filter"} onClick={() => { setAdminSection("help"); resetAdminForm(); resetSpaceForm(); resetFoodForm(); }}>🛠️ Help Reports</button>
+      </div>
+      {adminSection === "overview" && (() => {
+        const openHelp = adminHelpReports.filter(
+          (report) => (report.status || "Open") === "Open"
+        ).length;
+        const inProgressHelp = adminHelpReports.filter(
+          (report) => report.status === "In Progress"
+        ).length;
+        const resolvedHelp = adminHelpReports.filter(
+          (report) => report.status === "Resolved"
+        ).length;
+
+        const uniqueRegisteredStudents = new Set(
+          adminRegistrations.map(
+            (registration) =>
+              registration.userId ||
+              registration.studentEmail ||
+              registration.studentName
+          )
+        ).size;
+
+        const overviewStats = [
+          {
+            label: "Published notices",
+            value: adminData.notices.length,
+            icon: "📢",
+            action: "notices",
+            helper: "Live Firestore content",
+          },
+          {
+            label: "Upcoming events",
+            value: adminData.events.length,
+            icon: "📅",
+            action: "events",
+            helper: "Live Firestore content",
+          },
+          {
+            label: "Campus spaces",
+            value: firestoreSpaces.length,
+            icon: "🏫",
+            action: "spaces",
+            helper: "Managed spaces",
+          },
+          {
+            label: "Food places",
+            value: firestoreFood.length,
+            icon: "🍔",
+            action: "food",
+            helper: "Managed food listings",
+          },
+          {
+            label: "Event registrations",
+            value: adminRegistrations.length,
+            icon: "🎟️",
+            action: "registrations",
+            helper: `${uniqueRegisteredStudents} unique student${uniqueRegisteredStudents === 1 ? "" : "s"}`,
+          },
+          {
+            label: "Open help reports",
+            value: openHelp,
+            icon: "🆘",
+            action: "help",
+            helper: `${inProgressHelp} in progress • ${resolvedHelp} resolved`,
+          },
+        ];
+
+        const recentRegistrations = adminRegistrations.slice(0, 5);
+        const recentHelpReports = adminHelpReports.slice(0, 5);
+
+        return (
+          <section style={{ width: "100%" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                gap: "14px",
+                marginBottom: "22px",
+              }}
+            >
+              {overviewStats.map((stat) => (
+                <button
+                  key={stat.label}
+                  type="button"
+                  onClick={() => setAdminSection(stat.action)}
+                  style={{
+                    textAlign: "left",
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "20px",
+                    padding: "20px",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 24px rgba(20, 33, 61, 0.05)",
+                  }}
+                >
+                  <div style={{ fontSize: "22px" }}>{stat.icon}</div>
+                  <strong
+                    style={{
+                      display: "block",
+                      fontSize: "32px",
+                      lineHeight: 1,
+                      marginTop: "12px",
+                    }}
+                  >
+                    {stat.value}
+                  </strong>
+                  <span
+                    style={{
+                      display: "block",
+                      marginTop: "9px",
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      color: "#14213d",
+                    }}
+                  >
+                    {stat.label}
+                  </span>
+                  <small
+                    style={{
+                      display: "block",
+                      marginTop: "6px",
+                      color: "#60708a",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {stat.helper}
+                  </small>
+                </button>
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: "18px",
+                marginBottom: "22px",
+              }}
+            >
+              <section className="admin-list-card">
+                <div className="admin-card-heading">
+                  <div>
+                    <span className="eyebrow">QUICK ACTIONS</span>
+                    <h3>Manage campus content</h3>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: "10px" }}>
+                  {[
+                    ["📢", "Publish notice", "notices"],
+                    ["📅", "Create event", "events"],
+                    ["🏫", "Add campus space", "spaces"],
+                    ["🍔", "Add food place", "food"],
+                  ].map(([icon, label, section]) => (
+                    <button
+                      key={section}
+                      type="button"
+                      className="view-all"
+                      onClick={() => {
+                        setAdminSection(section);
+                        resetAdminForm();
+                        resetSpaceForm();
+                        resetFoodForm();
+                      }}
+                      style={{
+                        textAlign: "left",
+                        padding: "13px 15px",
+                        width: "100%",
+                      }}
+                    >
+                      <span style={{ marginRight: "8px" }}>{icon}</span>
+                      {label} →
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="admin-list-card">
+                <div className="admin-card-heading">
+                  <div>
+                    <span className="eyebrow">SUPPORT HEALTH</span>
+                    <h3>Student help status</h3>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setAdminSection("help")}
+                  >
+                    Open reports
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 1fr)",
+                    gap: "10px",
+                  }}
+                >
+                  {[
+                    ["Open", openHelp, "🟠"],
+                    ["Progress", inProgressHelp, "🔵"],
+                    ["Resolved", resolvedHelp, "🟢"],
+                  ].map(([label, value, icon]) => (
+                    <div
+                      key={label}
+                      style={{
+                        padding: "14px",
+                        borderRadius: "14px",
+                        background: "#f8fafc",
+                        border: "1px solid #e5e7eb",
+                      }}
+                    >
+                      <div>{icon}</div>
+                      <strong
+                        style={{
+                          display: "block",
+                          fontSize: "24px",
+                          marginTop: "7px",
+                        }}
+                      >
+                        {value}
+                      </strong>
+                      <small style={{ color: "#60708a", fontWeight: 800 }}>
+                        {label}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+                gap: "18px",
+              }}
+            >
+              <section className="admin-list-card">
+                <div className="admin-card-heading">
+                  <div>
+                    <span className="eyebrow">RECENT ACTIVITY</span>
+                    <h3>Latest event registrations</h3>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setAdminSection("registrations")}
+                  >
+                    View all
+                  </button>
+                </div>
+
+                {recentRegistrations.length === 0 ? (
+                  <p>No event registrations yet.</p>
+                ) : (
+                  <div className="admin-item-list">
+                    {recentRegistrations.map((registration) => (
+                      <div className="admin-item" key={registration.id}>
+                        <div className="admin-item-main">
+                          <strong>
+                            {registration.studentName || "Campus student"}
+                          </strong>
+                          <p>
+                            {registration.eventTitle ||
+                              `Event ${registration.eventId || ""}`}
+                          </p>
+                          <small style={{ opacity: 0.65 }}>
+                            {formatRegistrationDate(registration.registeredAt)}
+                          </small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="admin-list-card">
+                <div className="admin-card-heading">
+                  <div>
+                    <span className="eyebrow">NEEDS ATTENTION</span>
+                    <h3>Latest help reports</h3>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setAdminSection("help")}
+                  >
+                    View all
+                  </button>
+                </div>
+
+                {recentHelpReports.length === 0 ? (
+                  <p>No student help reports yet.</p>
+                ) : (
+                  <div className="admin-item-list">
+                    {recentHelpReports.map((report) => (
+                      <div className="admin-item" key={report.id}>
+                        <div className="admin-item-main">
+                          <span className="event-tag">
+                            {report.status || "Open"}
+                          </span>
+                          <strong>{report.category || "Support"}</strong>
+                          <p>{report.location || "Campus"}</p>
+                          <small style={{ opacity: 0.65 }}>
+                            {report.description || "No description added."}
+                          </small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          </section>
+        );
+      })()}
+
       {adminSection === "help" && (() => {
         const total = adminHelpReports.length;
         const open = adminHelpReports.filter((report) => (report.status || "Open") === "Open").length;
@@ -2375,7 +3698,576 @@ function App() {
         );
       })()}
 
-      {adminSection === "help" ? (
+      {adminSection === "registrations" ? (
+        (() => {
+          const eventMap = new Map(
+            [...events, ...visibleEvents].map((item) => [String(item.id), item])
+          );
+
+          const registrationEventOptions = [
+            ...new Set(
+              adminRegistrations
+                .map((registration) => {
+                  const event = eventMap.get(String(registration.eventId));
+                  return {
+                    id: String(registration.eventId || ""),
+                    title:
+                      registration.eventTitle ||
+                      event?.title ||
+                      `Event ${registration.eventId || ""}`,
+                  };
+                })
+                .filter((item) => item.id)
+                .map((item) => JSON.stringify(item))
+            ),
+          ]
+            .map((item) => JSON.parse(item))
+            .sort((a, b) => a.title.localeCompare(b.title));
+
+          const filteredRegistrations =
+            adminRegistrationEventFilter === "All"
+              ? adminRegistrations
+              : adminRegistrations.filter(
+                  (registration) =>
+                    String(registration.eventId) ===
+                    String(adminRegistrationEventFilter)
+                );
+
+          const uniqueStudents = new Set(
+            adminRegistrations.map(
+              (registration) =>
+                registration.userId || registration.studentEmail || registration.studentName
+            )
+          ).size;
+
+          const registeredEventCount = new Set(
+            adminRegistrations.map((registration) => String(registration.eventId))
+          ).size;
+
+          return (
+            <section style={{ width: "100%" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                  gap: "12px",
+                  marginBottom: "18px",
+                }}
+              >
+                {[
+                  ["TOTAL REGISTRATIONS", adminRegistrations.length, "🎟️"],
+                  ["UNIQUE STUDENTS", uniqueStudents, "👥"],
+                  ["EVENTS WITH REGISTRATIONS", registeredEventCount, "📅"],
+                ].map(([label, value, icon]) => (
+                  <div
+                    key={label}
+                    style={{
+                      background: "white",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "18px",
+                      padding: "18px",
+                    }}
+                  >
+                    <div style={{ fontSize: "20px" }}>{icon}</div>
+                    <strong
+                      style={{
+                        display: "block",
+                        fontSize: "30px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      {value}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        letterSpacing: ".08em",
+                        color: "#60708a",
+                      }}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <section className="admin-list-card" style={{ width: "100%" }}>
+                <div className="admin-card-heading">
+                  <div>
+                    <span className="eyebrow">EVENT REGISTRATION MANAGEMENT</span>
+                    <h3>Students registered for campus events</h3>
+                  </div>
+
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={downloadRegistrationsCSV}
+                    disabled={adminRegistrations.length === 0}
+                  >
+                    ⬇ Export CSV
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(220px, 1fr) auto",
+                    gap: "12px",
+                    alignItems: "end",
+                    marginBottom: "18px",
+                  }}
+                >
+                  <div>
+                    <FormLabel text="Filter by event" />
+                    <select
+                      style={inputStyle}
+                      value={adminRegistrationEventFilter}
+                      onChange={(event) =>
+                        setAdminRegistrationEventFilter(event.target.value)
+                      }
+                    >
+                      <option value="All">All events</option>
+                      {registrationEventOptions.map((event) => (
+                        <option key={event.id} value={event.id}>
+                          {event.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      background: "#f8fafc",
+                      border: "1px solid #e5e7eb",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Showing {filteredRegistrations.length}
+                  </div>
+                </div>
+
+                {adminRegistrationsLoading ? (
+                  <p>Loading registrations from Firebase...</p>
+                ) : filteredRegistrations.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "24px",
+                      borderRadius: "16px",
+                      background: "#f8fafc",
+                      border: "1px dashed #dbe2ea",
+                    }}
+                  >
+                    <strong>No registrations found.</strong>
+                    <p style={{ marginBottom: 0 }}>
+                      Student event registrations will appear here in real time.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="admin-item-list">
+                    {filteredRegistrations.map((registration) => {
+                      const event = eventMap.get(String(registration.eventId));
+                      const eventTitle =
+                        registration.eventTitle ||
+                        event?.title ||
+                        `Event ${registration.eventId || ""}`;
+
+                      const eventDate =
+                        registration.eventDate ||
+                        (event
+                          ? `${event.date || ""} ${event.month || ""}`.trim()
+                          : "");
+
+                      return (
+                        <div className="admin-item" key={registration.id}>
+                          <div className="admin-item-main">
+                            <span className="event-tag">
+                              {event?.category || "EVENT"}
+                            </span>
+                            <strong>{eventTitle}</strong>
+                            <p>
+                              👤 {registration.studentName || "Campus student"}
+                              {registration.studentEmail
+                                ? ` • ${registration.studentEmail}`
+                                : ""}
+                            </p>
+                            <p style={{ marginBottom: "4px" }}>
+                              📅 {eventDate || "Date not added"}
+                              {registration.eventTime || event?.time
+                                ? ` • ${registration.eventTime || event?.time}`
+                                : ""}
+                              {registration.eventLocation || event?.location
+                                ? ` • ${registration.eventLocation || event?.location}`
+                                : ""}
+                            </p>
+                            <small style={{ opacity: 0.65 }}>
+                              Registered {formatRegistrationDate(registration.registeredAt)}
+                            </small>
+                          </div>
+
+                          <div className="admin-item-actions">
+                            <button
+                              className="danger-button"
+                              disabled={adminRegistrationDeleting === registration.id}
+                              onClick={() => deleteAdminRegistration(registration)}
+                            >
+                              {adminRegistrationDeleting === registration.id
+                                ? "Removing..."
+                                : "Remove"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </section>
+          );
+        })()
+      ) : adminSection === "spaces" ? (
+        <div className="admin-grid">
+          <section className="admin-form-card">
+            <div className="admin-card-heading">
+              <div>
+                <span className="eyebrow">{editingSpace ? "EDIT SPACE" : "PUBLISH SPACE"}</span>
+                <h3>{editingSpace ? "Update this space" : "New campus space"}</h3>
+              </div>
+              {editingSpace && (
+                <button className="secondary-button" type="button" onClick={resetSpaceForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={saveSpace}>
+              <FormLabel text="Space name" />
+              <input
+                style={inputStyle}
+                value={spaceForm.name}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, name: event.target.value })
+                }
+                placeholder="e.g. Central Library"
+                required
+              />
+
+              <FormLabel text="Type" />
+              <select
+                style={inputStyle}
+                value={spaceForm.type}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, type: event.target.value })
+                }
+              >
+                <option>Library</option>
+                <option>Classroom</option>
+                <option>Study Hall</option>
+                <option>Common Area</option>
+                <option>Lab</option>
+                <option>Cafeteria</option>
+              </select>
+
+              <FormLabel text="Location" />
+              <input
+                style={inputStyle}
+                value={spaceForm.location}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, location: event.target.value })
+                }
+                placeholder="e.g. 2nd Floor"
+                required
+              />
+
+              <div className="admin-form-two-col">
+                <div>
+                  <FormLabel text="Capacity" />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    value={spaceForm.capacity}
+                    onChange={(event) =>
+                      setSpaceForm({ ...spaceForm, capacity: event.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div>
+                  <FormLabel text="Available seats" />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    value={spaceForm.available}
+                    onChange={(event) =>
+                      setSpaceForm({ ...spaceForm, available: event.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+
+              <FormLabel text="Availability status" />
+              <select
+                style={inputStyle}
+                value={spaceForm.status}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, status: event.target.value })
+                }
+              >
+                <option>Available</option>
+                <option>Moderate</option>
+                <option>Busy</option>
+              </select>
+
+              <FormLabel text="Environment" />
+              <select
+                style={inputStyle}
+                value={spaceForm.environment}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, environment: event.target.value })
+                }
+              >
+                <option>Quiet</option>
+                <option>Social</option>
+                <option>Collaborative</option>
+                <option>Active</option>
+              </select>
+
+              <FormLabel text="Description" />
+              <textarea
+                style={{ ...inputStyle, minHeight: "110px", resize: "vertical" }}
+                value={spaceForm.description}
+                onChange={(event) =>
+                  setSpaceForm({ ...spaceForm, description: event.target.value })
+                }
+                placeholder="Describe the space..."
+                required
+              />
+
+              <button
+                className="primary-button admin-publish"
+                type="submit"
+                disabled={spaceSaving}
+              >
+                {spaceSaving
+                  ? "Saving to Firebase..."
+                  : editingSpace
+                  ? "✓ Update space"
+                  : "🚀 Publish space"}
+              </button>
+            </form>
+          </section>
+
+          <section className="admin-list-card">
+            <div className="admin-card-heading">
+              <div>
+                <span className="eyebrow">FIRESTORE SPACES</span>
+                <h3>Published campus spaces</h3>
+              </div>
+              <span className="admin-count">{firestoreSpaces.length}</span>
+            </div>
+
+            {spaceLoading ? (
+              <p>Loading spaces from Firebase...</p>
+            ) : firestoreSpaces.length === 0 ? (
+              <p>No Firebase spaces yet. Publish your first space using the form.</p>
+            ) : (
+              <div className="admin-item-list">
+                {firestoreSpaces.map((space) => (
+                  <div className="admin-item" key={space.id}>
+                    <div className="admin-item-main">
+                      <span className="event-tag">
+                        {space.type || "SPACE"}
+                      </span>
+                      <strong>{space.name}</strong>
+                      <p>
+                        {space.location || "Campus"} • {space.available ?? 0} / {space.capacity ?? 0} seats • {space.status || "Available"}
+                      </p>
+                      <small style={{ opacity: 0.65 }}>
+                        {space.environment || "Quiet"} environment
+                      </small>
+                    </div>
+
+                    <div className="admin-item-actions">
+                      <button
+                        className="secondary-button"
+                        onClick={() => startSpaceEdit(space)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="danger-button"
+                        onClick={() => deleteSpace(space)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : adminSection === "food" ? (
+        <div className="admin-grid">
+          <section className="admin-form-card">
+            <div className="admin-card-heading">
+              <div>
+                <span className="eyebrow">{editingFood ? "EDIT FOOD PLACE" : "PUBLISH FOOD PLACE"}</span>
+                <h3>{editingFood ? "Update this food place" : "New campus food place"}</h3>
+              </div>
+              {editingFood && (
+                <button className="secondary-button" type="button" onClick={resetFoodForm}>
+                  Cancel
+                </button>
+              )}
+            </div>
+
+            <form onSubmit={saveFoodPlace}>
+              <FormLabel text="Food place name" />
+              <input
+                style={inputStyle}
+                value={foodForm.name}
+                onChange={(event) =>
+                  setFoodForm({ ...foodForm, name: event.target.value })
+                }
+                placeholder="e.g. Uni Mall Food Court"
+                required
+              />
+
+              <FormLabel text="Cuisine / food type" />
+              <input
+                style={inputStyle}
+                value={foodForm.cuisine}
+                onChange={(event) =>
+                  setFoodForm({ ...foodForm, cuisine: event.target.value })
+                }
+                placeholder="e.g. Multi-cuisine"
+                required
+              />
+
+              <FormLabel text="Price range" />
+              <input
+                style={inputStyle}
+                value={foodForm.price}
+                onChange={(event) =>
+                  setFoodForm({ ...foodForm, price: event.target.value })
+                }
+                placeholder="e.g. ₹50 - ₹200"
+                required
+              />
+
+              <div className="admin-form-two-col">
+                <div>
+                  <FormLabel text="Crowd level" />
+                  <select
+                    style={inputStyle}
+                    value={foodForm.crowd}
+                    onChange={(event) =>
+                      setFoodForm({ ...foodForm, crowd: event.target.value })
+                    }
+                  >
+                    <option>Available</option>
+                    <option>Moderate</option>
+                    <option>Busy</option>
+                  </select>
+                </div>
+
+                <div>
+                  <FormLabel text="Rating" />
+                  <input
+                    style={inputStyle}
+                    type="number"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    value={foodForm.rating}
+                    onChange={(event) =>
+                      setFoodForm({ ...foodForm, rating: event.target.value })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+
+              <FormLabel text="Description" />
+              <textarea
+                style={{ ...inputStyle, minHeight: "110px", resize: "vertical" }}
+                value={foodForm.description}
+                onChange={(event) =>
+                  setFoodForm({ ...foodForm, description: event.target.value })
+                }
+                placeholder="Describe the food place, popular items, timings, etc."
+                required
+              />
+
+              <button
+                className="primary-button admin-publish"
+                type="submit"
+                disabled={foodSaving}
+              >
+                {foodSaving
+                  ? "Saving to Firebase..."
+                  : editingFood
+                  ? "✓ Update food place"
+                  : "🚀 Publish food place"}
+              </button>
+            </form>
+          </section>
+
+          <section className="admin-list-card">
+            <div className="admin-card-heading">
+              <div>
+                <span className="eyebrow">FIRESTORE FOOD PLACES</span>
+                <h3>Published food places</h3>
+              </div>
+              <span className="admin-count">{firestoreFood.length}</span>
+            </div>
+
+            {foodLoading ? (
+              <p>Loading food places from Firebase...</p>
+            ) : firestoreFood.length === 0 ? (
+              <p>No Firebase food places yet. Publish your first one using the form.</p>
+            ) : (
+              <div className="admin-item-list">
+                {firestoreFood.map((place) => (
+                  <div className="admin-item" key={place.id}>
+                    <div className="admin-item-main">
+                      <span className="event-tag">{place.cuisine || "FOOD"}</span>
+                      <strong>{place.name}</strong>
+                      <p>
+                        {place.price || "Price not added"} • ⭐ {place.rating || "0.0"} • Crowd: {place.crowd || "Moderate"}
+                      </p>
+                      <small style={{ opacity: 0.65 }}>
+                        {place.description || "No description added."}
+                      </small>
+                    </div>
+
+                    <div className="admin-item-actions">
+                      <button
+                        className="secondary-button"
+                        onClick={() => startFoodEdit(place)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="danger-button"
+                        onClick={() => deleteFoodPlace(place)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : adminSection === "help" ? (
         <section className="admin-list-card" style={{ width: "100%" }}>
           <div className="admin-card-heading">
             <div><span className="eyebrow">STUDENT SUPPORT</span><h3>Help & maintenance reports</h3></div>
@@ -2424,7 +4316,7 @@ function App() {
           <div className="admin-card-heading">
             <div>
               <span className="eyebrow">FIRESTORE ITEMS</span>
-              <h3>{adminSection === "notices" ? "Published notices" : adminSection === "events" ? "Published events" : "Student help reports"}</h3>
+              <h3>{adminSection === "notices" ? "Published notices" : adminSection === "events" ? "Published events" : adminSection === "spaces" ? "Published spaces" : adminSection === "food" ? "Published food places" : adminSection === "registrations" ? "Event registrations" : adminSection === "overview" ? "Admin overview" : "Student help reports"}</h3>
             </div>
             <span className="admin-count">{adminList.length}</span>
           </div>
@@ -2499,10 +4391,139 @@ function App() {
   }
 
   /*
+   * PROFILE
+   */
+  if (page === "profile") {
+    const initials = (profileForm.name || "Student")
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("");
+
+    return (
+      <SimplePage
+        setPage={goTo}
+        eyebrow="MY PROFILE"
+        title="Make CampusBuddy yours."
+        text="Keep your student information current so CampusBuddy can personalize your campus experience."
+        nightMode={nightMode}
+        setNightMode={setNightMode}
+        geoVerified={geoVerified}
+        profile={studentProfile}
+        user={user}
+        onLogout={handleLogout}
+      >
+        <section className="profile-editor-card">
+          <div className="profile-editor-header">
+            <div className="profile-editor-avatar">{initials || "S"}</div>
+            <div>
+              <span className="eyebrow">PERSONALIZED CAMPUS EXPERIENCE</span>
+              <h2>{profileForm.name || "Campus student"}</h2>
+              <p>{user.email}</p>
+            </div>
+            <span className="profile-role-pill">{studentProfile?.role === "admin" ? "ADMIN" : "STUDENT"}</span>
+          </div>
+
+          <form onSubmit={saveStudentProfile} className="profile-editor-form">
+            <div className="profile-form-grid">
+              <div><FormLabel text="Full name" /><input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} style={inputStyle} required /></div>
+              <div><FormLabel text="Course / programme" /><input value={profileForm.course} onChange={(e) => setProfileForm({ ...profileForm, course: e.target.value })} placeholder="e.g. B.Tech CSE" style={inputStyle} /></div>
+              <div><FormLabel text="Year" /><input value={profileForm.year} onChange={(e) => setProfileForm({ ...profileForm, year: e.target.value })} placeholder="e.g. 1" style={inputStyle} /></div>
+              <div><FormLabel text="Department" /><input value={profileForm.department} onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })} placeholder="e.g. Computer Science" style={inputStyle} /></div>
+              <div><FormLabel text="Phone" /><input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} placeholder="Optional" style={inputStyle} /></div>
+              <div className="profile-form-full"><FormLabel text="Short bio" /><textarea value={profileForm.bio} onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })} placeholder="What are you interested in on campus?" rows="4" style={inputStyle} /></div>
+            </div>
+            <div className="profile-editor-actions">
+              <button className="primary-button" type="submit" disabled={profileSaving}>{profileSaving ? "Saving..." : "Save Profile"}</button>
+              <button className="view-all" type="button" onClick={() => goTo("community")}>Edit Community Profile →</button>
+            </div>
+          </form>
+        </section>
+
+        <section className="section dashboard-section">
+          <div className="section-heading-row"><div><span className="eyebrow">PERSONALIZATION</span><h2>What CampusBuddy can use</h2></div></div>
+          <div className="module-grid">
+            <DashboardModule icon="🎯" title="Better AI results" text="Your course, interests and profile help tailor campus suggestions." onClick={() => goTo("home")} />
+            <DashboardModule icon="🤝" title="Community matching" text="Skills and interests make it easier to find project and study partners." onClick={() => goTo("community")} />
+            <DashboardModule icon="📅" title="Event discovery" text="Use your interests when browsing campus activities." onClick={() => goTo("events")} />
+            <DashboardModule icon="🔔" title="Campus updates" text="See notices, event activity and support updates in one place." onClick={() => goTo("notifications")} />
+          </div>
+        </section>
+      </SimplePage>
+    );
+  }
+
+  /*
+   * NOTIFICATIONS / CAMPUS INTELLIGENCE
+   */
+  if (page === "notifications") {
+    const notificationItems = [
+      ...visibleNotices.slice(0, 5).map((notice) => ({ id: `notice-${notice.id}`, icon: "📢", type: "Notice", title: notice.title, text: notice.text, action: () => goTo("notices") })),
+      ...visibleEvents.slice(0, 5).map((event) => ({ id: `event-${event.id}`, icon: "📅", type: "Event", title: event.title, text: `${event.date || "Upcoming"} • ${event.location || "Campus"}`, action: () => goTo("events") })),
+      ...helpReports.slice(0, 5).map((report) => ({ id: `help-${report.id}`, icon: "🆘", type: "Support", title: `${report.category} request`, text: `${report.location} • ${report.status || "Open"}`, action: () => goTo("help") })),
+    ];
+
+    return (
+      <SimplePage
+        setPage={goTo}
+        eyebrow="CAMPUS UPDATES"
+        title="Your notification center."
+        text="Important notices, event activity and your support requests in one live view."
+        nightMode={nightMode}
+        setNightMode={setNightMode}
+        geoVerified={geoVerified}
+        profile={studentProfile}
+        user={user}
+        onLogout={handleLogout}
+      >
+        <section className="notification-hero">
+          <div><span className="eyebrow">LIVE CAMPUS INTELLIGENCE</span><h2>{notificationItems.length} updates available</h2><p>Notices and events are synced from Firebase in real time. Support updates are tied to your account.</p></div>
+          <button className="primary-button" onClick={() => { if ("Notification" in window) Notification.requestPermission(); }}>🔔 Enable browser alerts</button>
+        </section>
+
+        {notificationItems.length === 0 ? (
+          <div className="empty-details"><div>✨</div><h3>You are all caught up.</h3><p>New campus updates will appear here automatically.</p></div>
+        ) : (
+          <div className="notification-list">
+            {notificationItems.map((item) => (
+              <button className="notification-card" key={item.id} onClick={item.action}>
+                <span className="notification-icon">{item.icon}</span>
+                <span className="notification-copy"><small>{item.type}</small><strong>{item.title}</strong><span>{item.text}</span></span>
+                <span className="notification-arrow">→</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </SimplePage>
+    );
+  }
+
+  /*
    * COMMUNITY
    */
   if (page === "community") {
     const currentUserId = user?.uid;
+
+    const normalizedCommunitySearch = communitySearch.trim().toLowerCase();
+
+    const filteredCommunityProfiles = communityProfiles.filter((profile) => {
+      if (!normalizedCommunitySearch) return true;
+
+      const searchableText = [
+        profile.name,
+        profile.course,
+        profile.year,
+        profile.skills,
+        profile.lookingFor,
+        profile.interests,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchableText.includes(normalizedCommunitySearch);
+    });
 
     return (
       <SimplePage
@@ -2605,6 +4626,29 @@ function App() {
             <p>Discover students who are open to collaborating.</p>
           </div>
 
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: "10px",
+              marginBottom: "18px",
+            }}
+          >
+            <input
+              value={communitySearch}
+              onChange={(event) => setCommunitySearch(event.target.value)}
+              placeholder="Search by name, skill, course, interest..."
+              style={inputStyle}
+            />
+            <button
+              className="view-all"
+              type="button"
+              onClick={() => setCommunitySearch("")}
+            >
+              Clear
+            </button>
+          </div>
+
           {communityLoading ? (
             <div className="dashboard-section" style={{ padding: "28px", textAlign: "center" }}>
               Loading community profiles...
@@ -2616,6 +4660,13 @@ function App() {
                 Save your profile above to become the first student in the directory.
               </p>
             </div>
+          ) : filteredCommunityProfiles.length === 0 ? (
+            <div className="dashboard-section" style={{ padding: "28px" }}>
+              <strong>No matching students found.</strong>
+              <p style={{ marginBottom: 0 }}>
+                Try another name, skill, course or interest.
+              </p>
+            </div>
           ) : (
             <div
               style={{
@@ -2624,7 +4675,7 @@ function App() {
                 gap: "18px",
               }}
             >
-              {communityProfiles.map((profile) => {
+              {filteredCommunityProfiles.map((profile) => {
                 const isCurrentUser = profile.id === currentUserId;
                 const skillTags = (profile.skills || "")
                   .split(",")
@@ -2777,7 +4828,7 @@ function App() {
    */
   if (page === "ai") {
     return (
-      <div className={nightMode ? "app night-owl" : "app"}>
+      <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
         <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
         <main className="ai-page">
@@ -2828,7 +4879,7 @@ function App() {
 
               <button
                 className="recommendation clickable-card"
-                onClick={() => goTo("detail", spaces[0])}
+                onClick={() => goTo("detail", visibleSpaces[0] || spaces[0])}
               >
                 <div className="recommendation-icon">📚</div>
 
@@ -2856,19 +4907,23 @@ function App() {
                 <span className="event-tag">RELEVANT</span>
               </button>
 
-              <button
-                className="recommendation clickable-card"
-                onClick={() => goTo("detail", foodPlaces[2])}
-              >
-                <div className="recommendation-icon">🍔</div>
+              {(visibleFood[0] || foodPlaces[2]) && (
+                <button
+                  className="recommendation clickable-card"
+                  onClick={() => goTo("detail", visibleFood[0] || foodPlaces[2])}
+                >
+                  <div className="recommendation-icon">🍔</div>
 
-                <div>
-                  <strong>South Indian Corner</strong>
-                  <p>₹50 - ₹180 • ⭐ 4.5 • Lower crowd</p>
-                </div>
+                  <div>
+                    <strong>{(visibleFood[0] || foodPlaces[2]).name}</strong>
+                    <p>
+                      {(visibleFood[0] || foodPlaces[2]).price} • ⭐ {(visibleFood[0] || foodPlaces[2]).rating} • {(visibleFood[0] || foodPlaces[2]).crowd} crowd
+                    </p>
+                  </div>
 
-                <span className="event-tag">FOOD</span>
-              </button>
+                  <span className="event-tag">FOOD</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -2893,22 +4948,30 @@ function App() {
    * HOME DASHBOARD
    */
   return (
-    <div className={nightMode ? "app night-owl" : "app"}>
+    <div className={nightMode ? "app night-owl campus-3d" : "app campus-3d"}>
       <Navbar setPage={goTo} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={studentProfile} user={user} onLogout={handleLogout} />
 
       <main>
+        <div className="campus-3d-orbit campus-3d-orbit-one" />
+        <div className="campus-3d-orbit campus-3d-orbit-two" />
         <section className="dashboard-hero">
           <div>
             <span className="welcome">YOUR CAMPUS, SIMPLIFIED</span>
 
             <h1>
-              Good evening,
+              Good morning,
               <br />
-              <span>Student 👋</span>
+              <span>
+                {studentProfile?.role === "admin"
+                  ? "Admin 👋"
+                  : `${studentProfile?.name || "Student"} 👋`}
+              </span>
             </h1>
 
             <p>
-              Everything you need for a better campus day, in one place.
+              {studentProfile?.role === "admin"
+                ? "Manage campus content, spaces, food and student support from one place."
+                : "Everything you need for a better campus day, in one place."}
             </p>
           </div>
 
@@ -2952,6 +5015,21 @@ function App() {
           <div className="student-profile-meta">
             <span className="profile-status-dot">●</span>
             <span>Account active</span>
+            <span
+              style={{
+                padding: "6px 9px",
+                borderRadius: "999px",
+                background:
+                  studentProfile?.role === "admin" ? "#eef4ff" : "#f3f4f6",
+                color:
+                  studentProfile?.role === "admin" ? "#214a87" : "#52606d",
+                fontSize: "11px",
+                fontWeight: 900,
+                letterSpacing: ".08em",
+              }}
+            >
+              {studentProfile?.role === "admin" ? "ADMIN" : "STUDENT"}
+            </span>
             <button
               className="profile-logout-button"
               onClick={handleLogout}
@@ -3007,6 +5085,15 @@ function App() {
               🍔 Find food
             </button>
           </div>
+        </section>
+
+        <section className="personalized-strip">
+          <div>
+            <span className="eyebrow">PERSONALIZED FOR YOU</span>
+            <h3>{studentProfile?.course ? `${studentProfile.course} • ${studentProfile.year ? `Year ${studentProfile.year}` : "Campus"}` : "Complete your profile for smarter recommendations"}</h3>
+            <p>{studentProfile?.interests || studentProfile?.bio || "Add your course, interests and skills so CampusBuddy can tailor spaces, events and community suggestions."}</p>
+          </div>
+          <button className="secondary-button" onClick={() => goTo("profile")}>{studentProfile?.course ? "Update Profile" : "Complete Profile"} →</button>
         </section>
 
         {nightMode && (
@@ -3112,6 +5199,20 @@ function App() {
               text="Report lost items and help return things to their owners."
               onClick={() => goTo("lostfound")}
             />
+
+            <DashboardModule
+              icon="🔔"
+              title="Notifications"
+              text="See campus notices, event updates and support activity."
+              onClick={() => goTo("notifications")}
+            />
+
+            <DashboardModule
+              icon="👤"
+              title="My Profile"
+              text="Update your course, year, department and preferences."
+              onClick={() => goTo("profile")}
+            />
           </div>
         </section>
 
@@ -3165,7 +5266,7 @@ function App() {
               </div>
 
               <div className="mini-space-list">
-                {spaces.slice(0, 3).map((space) => (
+                {visibleSpaces.slice(0, 3).map((space) => (
                   <button
                     className="mini-space clickable-card"
                     key={space.id}
@@ -3211,7 +5312,7 @@ function App() {
               </div>
 
               <div className="mini-event-list">
-                {events.slice(0, 2).map((event) => (
+                {visibleEvents.slice(0, 2).map((event) => (
                   <button
                     className="mini-event clickable-card"
                     key={event.id}
@@ -3269,7 +5370,7 @@ function App() {
         <div>
           <p>Making campus life easier, one fix at a time.</p>
           <small style={{ opacity: 0.65 }}>
-            Hackathon prototype • Demo campus data
+            Personal campus platform • Firebase-powered
           </small>
         </div>
       </footer>
@@ -3513,8 +5614,12 @@ function Navbar({
 }) {
   const displayName =
     profile?.name ||
+    user?.displayName ||
     user?.email?.split("@")[0] ||
     "Student";
+
+  const isAdmin = profile?.role === "admin";
+  const roleLabel = isAdmin ? "ADMIN" : "STUDENT";
 
   const initials = displayName
     .split(" ")
@@ -3522,6 +5627,7 @@ function Navbar({
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
+
   return (
     <nav className="navbar">
       <button
@@ -3541,7 +5647,16 @@ function Navbar({
         <button onClick={() => setPage("home")}>Home</button>
         <button onClick={() => setPage("spaces")}>Spaces</button>
         <button onClick={() => setPage("events")}>Events</button>
-        {profile?.role === "admin" && <button className="admin-nav-link" onClick={() => setPage("admin")}>Admin</button>}
+        <button onClick={() => setPage("notifications")}>🔔</button>
+        <button onClick={() => setPage("profile")}>Profile</button>
+        {isAdmin && (
+          <button
+            className="admin-nav-link"
+            onClick={() => setPage("admin")}
+          >
+            Admin
+          </button>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -3577,18 +5692,37 @@ function Navbar({
         <button
           className="profile-button profile-button-rich"
           onClick={() => setPage("home")}
-          title="Open your student dashboard"
+          title={`${roleLabel} account: ${displayName}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "9px",
+          }}
         >
           <span className="profile-mini-avatar">{initials || "S"}</span>
-          <span>{displayName}</span>
+
+          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.1 }}>
+            <span>{displayName}</span>
+            <span
+              style={{
+                marginTop: "4px",
+                fontSize: "10px",
+                fontWeight: 900,
+                letterSpacing: ".09em",
+                opacity: 0.7,
+              }}
+            >
+              {roleLabel}
+            </span>
+          </span>
         </button>
 
         {onLogout && (
           <button
             className="logout-icon-button"
             onClick={onLogout}
-            title="Log out"
-            aria-label="Log out"
+            title={`Log out ${roleLabel} account`}
+            aria-label={`Log out ${roleLabel} account`}
           >
             ↪
           </button>
@@ -3612,8 +5746,8 @@ function DashboardModule({
     <button
       className={
         featured
-          ? "dashboard-module featured"
-          : "dashboard-module"
+          ? "dashboard-module featured depth-card"
+          : "dashboard-module depth-card"
       }
       onClick={onClick}
     >
@@ -3690,7 +5824,7 @@ function SimplePage({
   onLogout,
 }) {
   return (
-    <div className="app">
+    <div className="app campus-3d">
       <Navbar setPage={setPage} nightMode={nightMode} setNightMode={setNightMode} geoVerified={geoVerified} profile={profile} user={user} onLogout={onLogout} />
 
       <main className="space-finder">
@@ -3719,7 +5853,7 @@ function InfoCard({
 }) {
   return (
     <button
-      className="dashboard-module clickable-card"
+      className="dashboard-module clickable-card depth-card"
       onClick={onClick}
     >
       <div className="module-icon">{icon}</div>

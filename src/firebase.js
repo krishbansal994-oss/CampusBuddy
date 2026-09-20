@@ -1,24 +1,46 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  browserSessionPersistence,
+  setPersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAnalytics, isSupported } from "firebase/analytics";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyDc1oT4q-VB2Ug_xnR6H-SMwyJ39N8nTBM",
-  authDomain: "campusbuddy-f0f09.firebaseapp.com",
-  projectId: "campusbuddy-f0f09",
-  storageBucket: "campusbuddy-f0f09.firebasestorage.app",
-  messagingSenderId: "711385413700",
-  appId: "1:711385413700:web:92c1d9d98642848726e411",
-  measurementId: "G-HXJ09NLNY1"
+  apiKey: "AIzaSyCpTlmHOiSq3UhNDbR9TkI47brIJnbzMoE",
+  authDomain: "codeflux-b11e0.firebaseapp.com",
+  projectId: "codeflux-b11e0",
+  storageBucket: "codeflux-b11e0.firebasestorage.app",
+  messagingSenderId: "683748050064",
+  appId: "1:683748050064:web:2d56b45f6c959fd8b98415",
+  measurementId: "G-7HGDQH69BY",
 };
 
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
 export const auth = getAuth(app);
+
+/*
+ * IMPORTANT:
+ * Use session persistence instead of local persistence.
+ *
+ * This means every browser tab gets its own Firebase login session.
+ * Admin can stay logged in on one tab while Student is logged in
+ * on another tab using the same browser.
+ */
+setPersistence(auth, browserSessionPersistence).catch((error) => {
+  console.error("Could not set session authentication persistence:", error);
+});
+
 export const db = getFirestore(app);
+
+isSupported()
+  .then((supported) => {
+    if (supported) {
+      getAnalytics(app);
+    }
+  })
+  .catch(() => {});
+
+export default app;
